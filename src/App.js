@@ -1,5 +1,6 @@
+import './App.css';
 import { db } from './db';
-import Compressor from 'compressorjs';
+import lzutf8 from 'lzutf8';
 
 function App() {
   const handleSubmit = async (e) => {
@@ -10,18 +11,11 @@ function App() {
     reader.readAsDataURL(file);
     reader.onload = async (e) => {
       const dataUrl = e.target.result;
-      new Compressor(file, {
-        quality: 0.6, // You can adjust the quality here
-        success: async (compressedResult) => {
-          const compressedDataUrl = await toDataUrl(compressedResult);
-          const icon = { name, dataUrl: compressedDataUrl };
-          await db.icons.put(icon);
-          alert('Image saved to IndexedDB!');
-        },
-        error: (error) => {
-          console.log(error.message);
-        },
-      });
+      const icon = { name };
+      const compressedDataUrl = await compressDataUrl(dataUrl);
+      icon.dataUrl = compressedDataUrl;
+      await db.icons.put(icon);
+      alert('Image saved to IndexedDB!');
     };
   };
 
@@ -30,22 +24,34 @@ function App() {
     const name = e.target.elements.name.value;
     const icon = await db.icons.get(name);
     if (icon) {
+      const decompressedDataUrl = await decompressDataUrl(icon.dataUrl);
       const img = document.getElementById('img');
-      img.src = icon.dataUrl;
+      img.src = decompressedDataUrl;
       alert('Image found in IndexedDB!');
     } else {
       alert('Image not found in IndexedDB!');
     }
   };
 
-  const toDataUrl = (file) => {
-    return new Promise((resolve) => {
+  const compressDataUrl = async (dataUrl) => {
+    const binaryString = await fetch(dataUrl).then(res => res.blob()).then(blob => new Promise(resolve => {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        resolve(event.target.result);
+      reader.onloadend = () => {
+        resolve(reader.result);
       };
-      reader.readAsDataURL(file);
-    });
+      reader.readAsBinaryString(blob);
+    }));
+    const compressed = lzutf8.compress(binaryString, { outputEncoding: "StorageBinaryString" });
+    const compressedDataUrl = 'data:image/jpeg;base64,' + btoa(compressed);
+    return compressedDataUrl;
+  };
+
+  const decompressDataUrl = async (compressedDataUrl) => {
+    const compressed = atob(compressedDataUrl.split(',')[1]);
+    const decompressed = lzutf8.decompress(compressed, { inputEncoding: "StorageBinaryString" });
+    const blob = new Blob([decompressed], { type: 'image/jpeg' });
+    const dataUrl = URL.createObjectURL(blob);
+    return dataUrl;
   };
 
   return (
@@ -67,7 +73,7 @@ function App() {
         <button type="submit">Search</button>
       </form>
       <br />
-      <img id="img" src="" alt="" width={300} height={300} />
+      <img id="img" src="" alt="" width={300} height={300}/>
     </div>
   );
 }
