@@ -1,5 +1,5 @@
-import './App.css';
 import { db } from './db';
+import Compressor from 'compressorjs';
 
 function App() {
   const handleSubmit = async (e) => {
@@ -10,9 +10,18 @@ function App() {
     reader.readAsDataURL(file);
     reader.onload = async (e) => {
       const dataUrl = e.target.result;
-      const icon = { name, dataUrl };
-      await db.icons.put(icon);
-      alert('Image saved to IndexedDB!');
+      new Compressor(file, {
+        quality: 0.6, // You can adjust the quality here
+        success: async (compressedResult) => {
+          const compressedDataUrl = await toDataUrl(compressedResult);
+          const icon = { name, dataUrl: compressedDataUrl };
+          await db.icons.put(icon);
+          alert('Image saved to IndexedDB!');
+        },
+        error: (error) => {
+          console.log(error.message);
+        },
+      });
     };
   };
 
@@ -21,15 +30,22 @@ function App() {
     const name = e.target.elements.name.value;
     const icon = await db.icons.get(name);
     if (icon) {
-
-  const img = document.getElementById('img');
-  img.src = icon.dataUrl;
-
-     
+      const img = document.getElementById('img');
+      img.src = icon.dataUrl;
       alert('Image found in IndexedDB!');
     } else {
       alert('Image not found in IndexedDB!');
     }
+  };
+
+  const toDataUrl = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        resolve(event.target.result);
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   return (
@@ -51,7 +67,7 @@ function App() {
         <button type="submit">Search</button>
       </form>
       <br />
-      <img id="img" src="" alt="" width={300} height={300}/>
+      <img id="img" src="" alt="" width={300} height={300} />
     </div>
   );
 }
